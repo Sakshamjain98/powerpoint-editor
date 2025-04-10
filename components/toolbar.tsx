@@ -39,6 +39,7 @@ interface ToolbarProps {
 export default function Toolbar({ canvas, currentSlide, updateCurrentSlide }: ToolbarProps) {
   const [activeTab, setActiveTab] = useState("insert")
   const [bgColor, setBgColor] = useState(currentSlide?.background || "#ffffff")
+  const [isUploading, setIsUploading] = useState(false);
 
   // Update bgColor when currentSlide changes
   useEffect(() => {
@@ -115,100 +116,97 @@ export default function Toolbar({ canvas, currentSlide, updateCurrentSlide }: To
   }
 
   // Upload image
-  const uploadImage = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!canvas || !e.target.files || e.target.files.length === 0) return
-    const file = e.target.files[0]
+  const uploadImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canvas || !e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
     
-    // Create a FormData object to send the file to Cloudinary
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('upload_preset', 'TaskMetaUpSpace')
-    
-    // First create a local URL for preview while uploading
-    const localUrl = URL.createObjectURL(file)
-    
-    // Create a temporary image on canvas immediately
-    fabric.Image.fromURL(
-      localUrl,
-      (fabricImg: fabric.Image) => {
-        fabricImg.set({
-          left: 100,
-          top: 100,
-          opacity: 1, // Make it semi-transparent to indicate it's uploading
-          name: 'uploading-image' // Mark it as uploading
-        })
-        canvas.add(fabricImg)
-        canvas.setActiveObject(fabricImg)
-        canvas.renderAll()
-        
-        // Now upload to Cloudinary
-        fetch('https://api.cloudinary.com/v1_1/dgufdt51q/image/upload', {
-          method: 'POST',
-          body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-          const cloudinaryUrl = data.secure_url
-          
-          // Replace the temporary image with the Cloudinary one
-          fabric.Image.fromURL(
-            cloudinaryUrl,
-            (cloudinaryImg: fabric.Image) => {
-              // Remove the temporary image
-              const objects = canvas.getObjects()
-              const tempImage = objects.find(obj => obj.name === 'uploading-image')
-              if (tempImage) {
-                canvas.remove(tempImage)
-              }
-              
-              // Calculate dimensions to fit within slide
-              const maxWidth = 400
-              const maxHeight = 300
-              let width = cloudinaryImg.width || 1
-              let height = cloudinaryImg.height || 1
-              
-              if (width > maxWidth || height > maxHeight) {
-                const ratio = Math.min(maxWidth / width, maxHeight / height)
-                width = width * ratio
-                height = height * ratio
-              }
-              
-              cloudinaryImg.set({
-                left: 100,
-                top: 100,
-                scaleX: width / (cloudinaryImg.width || 1),
-                scaleY: height / (cloudinaryImg.height || 1),
-                opacity: 1,
-                name: 'cloudinary-image'
-              })
-              
-              canvas.add(cloudinaryImg)
-              canvas.setActiveObject(cloudinaryImg)
-              canvas.renderAll()
-            },
-            { crossOrigin: 'anonymous' }
-          )
-        })
-        .catch(error => {
-          console.error("Error uploading image to Cloudinary:", error)
-          // Keep the local version if upload fails
-          const objects = canvas.getObjects()
-          const tempImage = objects.find(obj => obj.name === 'uploading-image')
-          if (tempImage) {
-            tempImage.set({ opacity: 1 })
-            canvas.renderAll()
+    setIsUploading(true);
+  
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', 'TaskMetaUpSpace');
+      
+      // Upload to Cloudinary
+      const response = await fetch('https://api.cloudinary.com/v1_1/dgufdt51q/image/upload', {
+        method: 'POST',
+        body: formData
+      });
+  
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+  
+      const data = await response.json();
+      const imageUrl = data.secure_url;
+  
+      // Use the addImageToCanvas function
+      const image = await addImageToCanvas(canvas, imageUrl);
+      
+      if (!image) {
+        throw new Error('Failed to add image to canvas');
+      }
+  
+      // Center the image after adding
+      canvas.viewportCenterObject(image);
+      canvas.renderAll();
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      alert("Failed to upload image. Please try again.");
+    } finally {
+      setIsUploading(false);
+      e.target.value = "";
+    }
+  };
+  
+  const addImageToCanvas = async (canvas: fabric.Canvas, imageUrl: string) => {
+    if (!canvas) return null;
+  
+    try {
+      const imgObj = new Image();
+      imgObj.crossOrigin = "Anonymous";
+      imgObj.src = imageUrl;
+  
+      return new Promise<fabric.Image>((resolve, reject) => {
+        imgObj.onload = () => {
+          const image = new fabric.Image(imgObj, {
+            id: `image-${Date.now()}`,
+            top: 100,
+            left: 100,
+            padding: 10,
+            cornerSize: 10, // Fixed typo from 'cornorSize' to 'cornerSize'
+            selectable: true,
+          });
+  
+          const maxDimension = 400;
+  
+          if (image.width! > maxDimension || image.height! > maxDimension) {
+            if (image.width! > image.height!) {
+              const scale = maxDimension / image.width!;
+              image.scaleX = scale;
+              image.scaleY = scale;
+            } else {
+              const scale = maxDimension / image.height!;
+              image.scaleX = scale;
+              image.scaleY = scale;
+            }
           }
-        })
-        .finally(() => {
-          URL.revokeObjectURL(localUrl)
-        })
-      },
-      { crossOrigin: 'anonymous' }
-    )
-    
-    // Reset the file input
-    e.target.value = ""
-  }
+  
+          canvas.add(image);
+          canvas.setActiveObject(image);
+          canvas.renderAll();
+          resolve(image);
+        };
+  
+        imgObj.onerror = () => {
+          reject(new Error(`Failed to load image: ${imageUrl}`));
+        };
+      });
+    } catch (error) {
+      console.error("Error adding image:", error);
+      return null;
+    }
+  };
   // Change background color
   const changeBackgroundColor = (color: string) => {
     if (!canvas) return
@@ -315,9 +313,9 @@ export default function Toolbar({ canvas, currentSlide, updateCurrentSlide }: To
       if (!activeObject) return
 
       if (direction === "forward") {
-        canvas.bringForward(activeObject)
+        activeObject.bringToFront()
       } else {
-        canvas.sendBackwards(activeObject)
+        canvas.sendToBack(activeObject)
       }
 
       canvas.renderAll()
@@ -435,20 +433,38 @@ export default function Toolbar({ canvas, currentSlide, updateCurrentSlide }: To
           </TooltipProvider>
 
           <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="icon" asChild className="h-10 w-10 text-black hover:bg-white">
-                  <label>
-                    <ImageIcon className="h-5 w-5" />
-                    <input type="file" accept="image/*" className="sr-only" onChange={uploadImage} />
-                  </label>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Add Image</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <Button 
+        variant="outline" 
+        size="icon" 
+        asChild 
+        className="h-10 w-10 text-black hover:bg-white"
+        disabled={isUploading}
+      >
+        <label>
+          {isUploading ? (
+            <div className="animate-spin">
+              <RotateCw className="h-5 w-5" />
+            </div>
+          ) : (
+            <ImageIcon className="h-5 w-5" />
+          )}
+          <input 
+            type="file" 
+            accept="image/*" 
+            className="sr-only" 
+            onChange={uploadImage} 
+            disabled={isUploading}
+          />
+        </label>
+      </Button>
+    </TooltipTrigger>
+    <TooltipContent>
+      <p>Add Image</p>
+    </TooltipContent>
+  </Tooltip>
+</TooltipProvider>
         </TabsContent>
 
         <TabsContent value="format" className="flex flex-wrap gap-2">
