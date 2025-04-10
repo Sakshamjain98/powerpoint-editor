@@ -99,7 +99,7 @@ export default function SlideNavigator({
                   variant="ghost"
                   size="icon"
                   onClick={() => setExpanded(!expanded)}
-                  className="h-8 w-8 text-black hover:bg-white"
+                  className="h-8 w-8 text-white hover:bg-black"
                 >
                   {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
                 </Button>
@@ -113,7 +113,7 @@ export default function SlideNavigator({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={addSlide} className="h-8 w-8 text-black hover:bg-white">
+                <Button variant="ghost" size="icon" onClick={addSlide} className="h-8 w-8 text-white hover:bg-black">
                   <Plus className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
@@ -131,7 +131,7 @@ export default function SlideNavigator({
                   size="icon"
                   onClick={deleteSlide}
                   disabled={slides.length <= 1}
-                  className="h-8 w-8 text-black hover:bg-white"
+                  className="h-8 w-8 text-white hover:bg-black"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -181,7 +181,7 @@ export default function SlideNavigator({
                     moveSlideUp(index)
                   }}
                   disabled={index === 0}
-                  className="h-6 w-6 bg-white/80 text-black hover:bg-white"
+                  className="h-6 w-6 bg-white/80 text-white hover:bg-black"
                 >
                   <ChevronUp className="h-3 w-3" />
                 </Button>
@@ -193,7 +193,7 @@ export default function SlideNavigator({
                     moveSlideDown(index)
                   }}
                   disabled={index === slides.length - 1}
-                  className="h-6 w-6 bg-white/80 text-black hover:bg-white"
+                  className="h-6 w-6 bg-white/80 text-white hover:bg-black"
                 >
                   <ChevronDown className="h-3 w-3" />
                 </Button>
