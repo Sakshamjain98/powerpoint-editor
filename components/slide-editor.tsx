@@ -129,9 +129,9 @@ export default function SlideEditor() {
   return (
     <div 
       ref={containerRef} 
-      className="relative flex items-center justify-center w-full h-full bg-gray-50"
+      className="relative flex items-center justify-center w-full h-full "
     >
-      <div className="shadow-lg rounded-sm overflow-hidden">
+      <div className="shadow-xl rounded-sm overflow-hidden">
         <canvas ref={canvasRef} id="fabric-canvas" width="960" height="540" />
       </div>
       

@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { FileUp, FilePlus, Save, Undo2, Redo2, FileText, HelpCircle, Download } from "lucide-react"
 import { usePresentation } from "@/lib/presentation-context"
 import { exportAsPDF, exportAsPPTX } from "./Export"
+import { extractPptxToJson, convertPptxJsonToFabric } from "./pptx-converter"
 
 export default function FileOperations() {
   const {
@@ -18,12 +19,13 @@ export default function FileOperations() {
     canUndo,
     canRedo,
     setPresentation,
-    addSlide
+    setCurrentSlideIndex
   } = usePresentation()
   
   const [title, setTitle] = useState(presentation.title)
   const [showHelp, setShowHelp] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
 
   useEffect(() => {
     setTitle(presentation.title)
@@ -38,8 +40,38 @@ export default function FileOperations() {
   }
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Implement PPTX upload if needed
-  }
+    if (!e.target.files || e.target.files.length === 0) return;
+  
+    const file = e.target.files[0];
+    if (!file.name.match(/\.(pptx|ppt)$/i)) {
+      alert("Please upload a PPTX or PPT file");
+      return;
+    }
+  
+    try {
+      setIsUploading(true);
+      // Extract the PPTX content to JSON
+      const presentationJson = await extractPptxToJson(file);
+      console.log("Extracted PPTX JSON:", presentationJson);
+      
+      // Convert to Fabric.js compatible format
+      const fabricPresentation = convertPptxJsonToFabric(presentationJson);
+      console.log("Converted Fabric Presentation:", fabricPresentation);
+      
+      // Update the presentation context
+      setPresentation(fabricPresentation);
+      setCurrentSlideIndex(0);
+      
+      alert("Presentation uploaded successfully!");
+    } catch (error) {
+      console.error("Error uploading PPTX:", error);
+      alert("Error uploading PPTX. Please try again.");
+    } finally {
+      setIsUploading(false);
+      // Reset the file input
+      e.target.value = "";
+    }
+  };
 
   const exportToPPTX = async () => {
     if (isExporting || !fabricCanvas) return
@@ -73,8 +105,11 @@ export default function FileOperations() {
 
   const savePresentation = () => {
     try {
-      localStorage.setItem("savedPresentation", JSON.stringify(presentation))
-      alert("Presentation saved successfully!")
+      // Ensure localStorage is only accessed client-side
+      if (typeof window !== 'undefined') {
+        localStorage.setItem("savedPresentation", JSON.stringify(presentation))
+        alert("Presentation saved successfully!")
+      }
     } catch (error) {
       console.error("Error saving presentation:", error)
       alert("Error saving presentation. Please try again.")
@@ -99,7 +134,7 @@ export default function FileOperations() {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={createNewPresentation} className="h-9 w-9">
+              <Button variant="ghost" size="icon" onClick={createNewPresentation} className="h-9 text-white bg-black w-9">
                 <FilePlus className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
@@ -112,10 +147,16 @@ export default function FileOperations() {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" asChild className="h-9 w-9">
+              <Button variant="ghost" size="icon" asChild className="h-9 text-white bg-black w-9">
                 <label>
                   <FileUp className="h-5 w-5" />
-                  <input type="file" accept=".pptx" className="sr-only" onChange={handleUpload} />
+                  <input 
+                    type="file" 
+                    accept=".pptx" 
+                    className="sr-only" 
+                    onChange={handleUpload}
+                    disabled={isUploading} 
+                  />
                 </label>
               </Button>
             </TooltipTrigger>
@@ -133,7 +174,7 @@ export default function FileOperations() {
                 size="icon"
                 onClick={exportToPPTX}
                 disabled={isExporting}
-                className="h-9 w-9"
+                className="h-9 w-9 text-white bg-black"
               >
                 <Download className="h-5 w-5" />
               </Button>
@@ -152,7 +193,7 @@ export default function FileOperations() {
                 size="icon"
                 onClick={exportToPDF}
                 disabled={isExporting}
-                className="h-9 w-9"
+                className="h-9 w-9 text-white bg-black"
               >
                 <FileText className="h-5 w-5" />
               </Button>
@@ -166,7 +207,7 @@ export default function FileOperations() {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={savePresentation} className="h-9 w-9">
+              <Button variant="ghost" size="icon" onClick={savePresentation} className="h-9 text-white bg-black w-9">
                 <Save className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
@@ -181,7 +222,7 @@ export default function FileOperations() {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={undo} disabled={!canUndo} className="h-9 w-9">
+              <Button variant="ghost" size="icon" onClick={undo} disabled={!canUndo} className="h-9 text-white bg-black w-9">
                 <Undo2 className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
@@ -194,7 +235,7 @@ export default function FileOperations() {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={redo} disabled={!canRedo} className="h-9 w-9">
+              <Button variant="ghost" size="icon" onClick={redo} disabled={!canRedo} className="h-9 text-white bg-black w-9">
                 <Redo2 className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
@@ -215,7 +256,7 @@ export default function FileOperations() {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={toggleHelp} className="h-9 w-9">
+              <Button variant="ghost" size="icon" onClick={toggleHelp} className="h-9 w-9 text-white bg-black">
                 <HelpCircle className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
@@ -229,8 +270,8 @@ export default function FileOperations() {
       {showHelp && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={toggleHelp}>
           <div className="bg-white p-6 rounded-lg shadow-lg max-w-2xl" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-xl font-bold mb-4 text-white">PowerPoint Editor Help</h2>
-            <div className="space-y-4 text-white">
+            <h2 className="text-xl font-bold mb-4 text-black">PowerPoint Editor Help</h2>
+            <div className="space-y-4 text-black">
               <div>
                 <h3 className="font-semibold">Navigation</h3>
                 <p>Use the slide thumbnails on the left to navigate between slides. Click on a slide to select it.</p>
@@ -265,4 +306,13 @@ export default function FileOperations() {
       )}
     </div>
   )
+}
+
+function createEmptySlide(): import("../lib/types").Slide {
+  return {
+    id: `slide-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+    background: "#FFFFFF", // Default white background
+    objects: [], // No objects initially
+    fabricState: null // Will be populated when rendered
+  };
 }

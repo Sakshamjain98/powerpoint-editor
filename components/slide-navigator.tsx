@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Plus, Trash2, ChevronUp, ChevronDown, Maximize2, Minimize2 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -18,81 +18,166 @@ export default function SlideNavigator() {
   } = usePresentation()
   
   const [expanded, setExpanded] = useState(true)
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  const [draggedIndex, setDraggedIndex] = useState(null)
+  const [dragOverIndex, setDragOverIndex] = useState(null)
 
-  const handleDragStart = (index: number) => {
+  // Improved drag and drop handling
+  const handleDragStart = (e, index) => {
     setDraggedIndex(index)
+    e.dataTransfer.effectAllowed = 'move'
   }
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
+  const handleDragOver = (e, index) => {
     e.preventDefault()
+    e.stopPropagation()
+    
     if (draggedIndex === null || draggedIndex === index) return
-
-    const draggedOverItem = document.querySelector(`[data-index="${index}"]`)
-    if (!draggedOverItem) return
-
-    draggedOverItem.classList.add("bg-gray-100")
+    
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverIndex(index)
   }
 
-  const handleDragLeave = (e: React.DragEvent, index: number) => {
+  const handleDragLeave = (e) => {
     e.preventDefault()
-    if (draggedIndex === null) return
-
-    const draggedOverItem = document.querySelector(`[data-index="${index}"]`)
-    if (!draggedOverItem) return
-
-    draggedOverItem.classList.remove("bg-gray-100")
+    e.stopPropagation()
+    setDragOverIndex(null)
   }
 
-  const handleDrop = (e: React.DragEvent, index: number) => {
+  const handleDrop = (e, index) => {
     e.preventDefault()
+    e.stopPropagation()
+    
     if (draggedIndex === null || draggedIndex === index) return
-
-    const draggedOverItem = document.querySelector(`[data-index="${index}"]`)
-    if (!draggedOverItem) return
-
-    draggedOverItem.classList.remove("bg-gray-100")
-
+    
+    // Perform the slide reordering
     reorderSlides(draggedIndex, index)
+    
+    // Reset states
     setDraggedIndex(null)
+    setDragOverIndex(null)
   }
 
   const handleDragEnd = () => {
     setDraggedIndex(null)
+    setDragOverIndex(null)
   }
 
-  const moveSlideUp = (index: number) => {
+  const moveSlideUp = (index) => {
     if (index > 0) {
       reorderSlides(index, index - 1)
     }
   }
 
-  const moveSlideDown = (index: number) => {
+  const moveSlideDown = (index) => {
     if (index < presentation.slides.length - 1) {
       reorderSlides(index, index + 1)
     }
   }
 
-  const renderSlideThumbnail = (slide: any, index: number) => {
+  // Improved thumbnail renderer function that shows actual visual representation
+  // Improved thumbnail renderer function for SlideNavigator.tsx
+  const renderSlideThumbnail = (slide, index) => {
+    const bgColor = slide.background || "#ffffff"
+    const objects = slide.objects || []
+    
     return (
       <div className="absolute inset-0 flex items-center justify-center">
-        <div
-          className="w-[80%] h-[60%] flex items-center justify-center text-xs"
-          style={{ backgroundColor: slide.background || "#ffffff" }}
+        <div 
+          className="w-full h-full relative flex flex-col justify-center items-center"
+          style={{ backgroundColor: bgColor }}
         >
-          {slide.fabricState ? (
-            <div className="w-full h-full relative">
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span>{index + 1}</span>
-              </div>
-              {slide.fabricState && (
-                <div className="absolute bottom-1 right-1">
-                  <div className="w-2 h-2 bg-black rounded-full"></div>
-                </div>
-              )}
-            </div>
-          ) : (
-            index + 1
+          {/* Render simplified versions of objects */}
+          {objects.map((obj, i) => {
+            if (i >= 8) return null // Limit objects for performance
+            
+            const scaleX = 0.8
+            const scaleY = 0.6
+            
+            // Normalize object properties for both Fabric.js and PPTX imported objects
+            const type = obj.type?.replace('i-', '') || 'rect' // Normalize Fabric.js types
+            const left = obj.left || 0
+            const top = obj.top || 0
+            const width = obj.width || (type === 'circle' ? (obj.radius || 0) * 2 : 50)
+            const height = obj.height || (type === 'circle' ? (obj.radius || 0) * 2 : 50)
+            const fill = obj.fill || obj.color || '#000000'
+            
+            switch (type) {
+              case 'text':
+              case 'textbox':
+                const textContent = obj.text || ""
+                const displayText = textContent.length > 10 ? textContent.substring(0, 10) + "..." : textContent
+                return (
+                  <div 
+                    key={obj.id || i}
+                    className="absolute bg-blue-200 rounded-sm overflow-hidden flex items-center justify-center p-1"
+                    style={{
+                      left: `${(left / 960) * 100 * scaleX}%`,
+                      top: `${(top / 540) * 100 * scaleY}%`,
+                      width: `${(width / 960) * 100 * scaleX}%`,
+                      height: `${(height / 540) * 100 * scaleY}%`,
+                      color: fill,
+                      fontSize: '6px',
+                      lineHeight: '1',
+                      opacity: 0.9
+                    }}
+                  >
+                    {displayText}
+                  </div>
+                )
+                
+              case 'image':
+                return (
+                  <div 
+                    key={obj.id || i}
+                    className="absolute bg-gray-200 flex items-center justify-center"
+                    style={{
+                      left: `${(left / 960) * 100 * scaleX}%`,
+                      top: `${(top / 540) * 100 * scaleY}%`,
+                      width: `${(width / 960) * 100 * scaleX}%`,
+                      height: `${(height / 540) * 100 * scaleY}%`,
+                      opacity: 0.8
+                    }}
+                  >
+                    <span className="text-xs">📷</span>
+                  </div>
+                )
+                
+              case 'circle':
+                return (
+                  <div 
+                    key={obj.id || i}
+                    className="absolute rounded-full"
+                    style={{
+                      left: `${(left / 960) * 100 * scaleX}%`,
+                      top: `${(top / 540) * 100 * scaleY}%`,
+                      width: `${(width / 960) * 100 * scaleX}%`,
+                      height: `${(height / 540) * 100 * scaleY}%`,
+                      backgroundColor: fill,
+                      opacity: 0.8
+                    }}
+                  />
+                )
+                
+              default: // rectangle and other shapes
+                return (
+                  <div 
+                    key={obj.id || i}
+                    className="absolute"
+                    style={{
+                      left: `${(left / 960) * 100 * scaleX}%`,
+                      top: `${(top / 540) * 100 * scaleY}%`,
+                      width: `${(width / 960) * 100 * scaleX}%`,
+                      height: `${(height / 540) * 100 * scaleY}%`,
+                      backgroundColor: fill,
+                      opacity: 0.8
+                    }}
+                  />
+                )
+            }
+          })}
+          
+          {objects.length === 0 && (
+            <span className="text-xs font-bold text-gray-400">Slide {index + 1}</span>
           )}
         </div>
       </div>
@@ -105,7 +190,7 @@ export default function SlideNavigator() {
       expanded ? "w-64" : "w-20",
     )}>
       <div className="p-2 flex justify-between items-center border-b border-gray-200">
-        <h2 className={cn("font-medium text-white", expanded ? "block" : "hidden")}>Slides</h2>
+        <h2 className={cn("font-medium text-black", expanded ? "block" : "hidden")}>Slides</h2>
         <div className="flex gap-1">
           <TooltipProvider>
             <Tooltip>
@@ -114,7 +199,7 @@ export default function SlideNavigator() {
                   variant="ghost"
                   size="icon"
                   onClick={() => setExpanded(!expanded)}
-                  className="h-8 w-8"
+                  className="h-8 w-8 text-white bg-black"
                 >
                   {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
                 </Button>
@@ -128,7 +213,7 @@ export default function SlideNavigator() {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={addSlide} className="h-8 w-8">
+                <Button variant="ghost" size="icon" onClick={addSlide} className="h-8 text-white bg-black w-8">
                   <Plus className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
@@ -146,7 +231,7 @@ export default function SlideNavigator() {
                   size="icon"
                   onClick={deleteSlide}
                   disabled={presentation.slides.length <= 1}
-                  className="h-8 w-8"
+                  className="h-8 w-8 text-white bg-black"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -164,16 +249,17 @@ export default function SlideNavigator() {
           <div
             key={slide.id}
             data-index={index}
-            draggable
-            onDragStart={() => handleDragStart(index)}
+            draggable={true}
+            onDragStart={(e) => handleDragStart(e, index)}
             onDragOver={(e) => handleDragOver(e, index)}
-            onDragLeave={(e) => handleDragLeave(e, index)}
+            onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, index)}
             onDragEnd={handleDragEnd}
             onClick={() => setCurrentSlideIndex(index)}
             className={cn(
               "border rounded-md cursor-pointer transition-all relative group",
               currentSlideIndex === index ? "border-gray-400 bg-gray-100" : "border-gray-200",
+              dragOverIndex === index ? "border-gray-800 bg-gray-100" : "",
               expanded ? "h-24" : "h-16",
             )}
           >

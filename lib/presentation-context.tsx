@@ -221,61 +221,80 @@ export function PresentationProvider({ children }: { children: React.ReactNode }
     
     try {
       const currentSlide = presentation.slides[currentSlideIndex]
+      if (!currentSlide) {
+        console.error("Cannot find current slide!", currentSlideIndex)
+        flags.isChangingSlide = false
+        return
+      }
+      
       debugLog(`Loading slide ${currentSlideIndex}`, {
         id: currentSlide.id,
         objects: currentSlide.objects?.length || 0
       })
       
-      // Clear the canvas first
+      // Clear the canvas first and set background
       fabricCanvas.clear()
       fabricCanvas.backgroundColor = currentSlide.background || "#ffffff"
       
+      // Log cache state for debugging
+      debugLog("Cache contains IDs:", Array.from(slideCacheRef.current.keys()))
+      
       // Check cache first
       const cachedState = slideCacheRef.current.get(currentSlide.id)
+      let loadedFromCache = false
       
       if (cachedState?.fabricState) {
-        debugLog('Loading from cache')
+        debugLog(`Loading from cache for slide ID: ${currentSlide.id}`)
         try {
-          fabricCanvas.loadFromJSON(cachedState.fabricState, () => {
-            // First ensure all objects are properly initialized
-            fabricCanvas.getObjects().forEach(obj => {
-              // Force visibility and ensure proper properties
-              obj.set({ visible: true });
-              // Ensure object is properly initialized
-              if (obj.setCoords) obj.setCoords();
-            });
-            
-            // Force a full render cycle
-            fabricCanvas.renderAll();
-            
-            // Double-check the objects were loaded
-            debugLog(`Loaded ${fabricCanvas.getObjects().length} objects from cache`);
-            
-            // Add a second render after a short delay to ensure objects are displayed
-            setTimeout(() => {
-              fabricCanvas.renderAll();
-              flags.isChangingSlide = false;
-              debugLog('Slide loaded from cache');
-            }, 100);
-          });
+          fabricCanvas.loadFromJSON(
+            JSON.parse(JSON.stringify(cachedState.fabricState)), // Deep clone to prevent reference issues
+            () => {
+              // Force a full render cycle
+              fabricCanvas.renderAll()
+              loadedFromCache = true
+              
+              setTimeout(() => {
+                flags.isChangingSlide = false
+                fabricCanvas.renderAll() // Extra render to ensure visibility
+                debugLog('Slide loaded from cache')
+              }, 100)
+            },
+            (err, obj) => {
+              if (err) debugLog(`Error loading object: ${err}`)
+            }
+          )
         } catch (error) {
-          console.error("Error loading from cache:", error);
-          debugLog('Cache load error:', error);
-          flags.isChangingSlide = false;
+          console.error("Error loading from cache:", error)
+          debugLog('Cache load error:', error)
+          loadedFromCache = false
         }
       }
-      // Otherwise load from slide state
-      else if (currentSlide.fabricState) {
-        fabricCanvas.loadFromJSON(currentSlide.fabricState, () => {
-          fabricCanvas.renderAll()
-          setTimeout(() => {
-            flags.isChangingSlide = false
-            debugLog('Slide loaded from state')
-          }, 50)
-        })
-      } 
-      // No content to load
-      else {
+      
+      // Fall back to slide state if cache failed
+      if (!loadedFromCache && currentSlide.fabricState) {
+        debugLog('Loading from slide state')
+        try {
+          fabricCanvas.loadFromJSON(
+            JSON.parse(JSON.stringify(currentSlide.fabricState)), // Deep clone
+            () => {
+              fabricCanvas.renderAll()
+              setTimeout(() => {
+                flags.isChangingSlide = false
+                fabricCanvas.renderAll() // Extra render
+                debugLog('Slide loaded from state')
+              }, 100)
+            },
+            (err, obj) => {
+              if (err) debugLog(`Error loading object: ${err}`)
+            }
+          )
+        } catch (error) {
+          console.error("Error loading from state:", error)
+          debugLog('State load error:', error)
+          flags.isChangingSlide = false
+        }
+      } else if (!loadedFromCache) {
+        // No content to load
         fabricCanvas.renderAll()
         setTimeout(() => {
           flags.isChangingSlide = false
@@ -525,27 +544,106 @@ useEffect(() => {
     
     // Save current slide state first
     if (fabricCanvas && !slideTransitionRef.current.isChangingSlide) {
-      saveCanvasState()
-    }
-    
-    const newPresentation = clonePresentation(presentation)
-    const [movedSlide] = newPresentation.slides.splice(fromIndex, 1)
-    newPresentation.slides.splice(toIndex, 0, movedSlide)
-    
-    updatePresentation(newPresentation)
-    
-    // Update current slide index if needed
-    let newIndex = currentSlideIndex
-    if (currentSlideIndex === fromIndex) {
-      newIndex = toIndex
-    } else if (currentSlideIndex > fromIndex && currentSlideIndex <= toIndex) {
-      newIndex = currentSlideIndex - 1
-    } else if (currentSlideIndex < fromIndex && currentSlideIndex >= toIndex) {
-      newIndex = currentSlideIndex + 1
-    }
-    
-    if (newIndex !== currentSlideIndex) {
-      setCurrentSlideIndex(newIndex)
+      // Set flag to prevent concurrent operations
+      slideTransitionRef.current.isChangingSlide = true
+      
+      // Explicitly save the current slide state before reordering
+      const objects = fabricCanvas.getObjects().map(obj => {
+        const baseObj = obj.toObject(['id', 'type']) as SerializedObjectProps & { id?: string }
+        return {
+          ...baseObj,
+          id: (obj as CustomFabricObject).id || baseObj.id || `obj-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+        }
+      })
+      
+      const state = {
+        version: '6.0.0',
+        objects,
+        background: typeof fabricCanvas.backgroundColor === "string" ? fabricCanvas.backgroundColor : "#ffffff"
+      }
+      
+      // Update cache for current slide
+      const currentSlide = presentation.slides[currentSlideIndex]
+      if (currentSlide) {
+        slideCacheRef.current.set(currentSlide.id, { 
+          fabricState: state,
+          objects
+        })
+        debugLog(`Updated cache for slide ${currentSlideIndex} before reordering`)
+      }
+      
+      // Create a new presentation with updated slide
+      const tempPresentation = clonePresentation(presentation)
+      if (tempPresentation.slides[currentSlideIndex]) {
+        tempPresentation.slides[currentSlideIndex] = {
+          ...tempPresentation.slides[currentSlideIndex],
+          fabricState: state,
+          objects,
+        }
+      }
+      
+      // Now perform the reordering
+      const [movedSlide] = tempPresentation.slides.splice(fromIndex, 1)
+      tempPresentation.slides.splice(toIndex, 0, movedSlide)
+      
+      // Update presentation state
+      setPresentation(tempPresentation)
+      
+      // Update history
+      const newHistory = history.slice(0, historyIndex + 1)
+      newHistory.push(clonePresentation(tempPresentation))
+      
+      if (newHistory.length > 30) {
+        newHistory.shift()
+        setHistoryIndex(Math.max(0, historyIndex))
+      } else {
+        setHistoryIndex(newHistory.length - 1)
+      }
+      
+      setHistory(newHistory)
+      
+      // Update current slide index if needed
+      let newIndex = currentSlideIndex
+      if (currentSlideIndex === fromIndex) {
+        newIndex = toIndex
+      } else if (currentSlideIndex > fromIndex && currentSlideIndex <= toIndex) {
+        newIndex = currentSlideIndex - 1
+      } else if (currentSlideIndex < fromIndex && currentSlideIndex >= toIndex) {
+        newIndex = currentSlideIndex + 1
+      }
+      
+      // Clear the flag and trigger a reload if needed
+      setTimeout(() => {
+        slideTransitionRef.current.isChangingSlide = false
+        
+        if (newIndex !== currentSlideIndex) {
+          setCurrentSlideIndex(newIndex)
+        } else {
+          // Force reload current slide
+          loadCanvasState()
+        }
+      }, 100)
+    } else {
+      // Simpler flow if canvas isn't available or is already in transition
+      const newPresentation = clonePresentation(presentation)
+      const [movedSlide] = newPresentation.slides.splice(fromIndex, 1)
+      newPresentation.slides.splice(toIndex, 0, movedSlide)
+      
+      updatePresentation(newPresentation)
+      
+      // Update current slide index if needed
+      let newIndex = currentSlideIndex
+      if (currentSlideIndex === fromIndex) {
+        newIndex = toIndex
+      } else if (currentSlideIndex > fromIndex && currentSlideIndex <= toIndex) {
+        newIndex = currentSlideIndex - 1
+      } else if (currentSlideIndex < fromIndex && currentSlideIndex >= toIndex) {
+        newIndex = currentSlideIndex + 1
+      }
+      
+      if (newIndex !== currentSlideIndex) {
+        setCurrentSlideIndex(newIndex)
+      }
     }
   }
 
@@ -642,25 +740,44 @@ useEffect(() => {
     fabricCanvas.requestRenderAll()
   }
 
-  const changeObjectPosition = (direction: "forward" | "backward" | "front" | "back") => {
-    if (!fabricCanvas) return
+  // Fix for the object positioning methods (in presentation-context.tsx)
+const changeObjectPosition = (direction: "forward" | "backward" | "front" | "back") => {
+  if (!fabricCanvas) return
 
-    const activeObjects = fabricCanvas.getActiveObjects() as CustomFabricObject[]
-    if (!activeObjects || activeObjects.length === 0) return
+  const activeObjects = fabricCanvas.getActiveObjects()
+  if (!activeObjects || activeObjects.length === 0) return
 
-    debugLog(`Changing position (${direction}) for ${activeObjects.length} objects`)
-    
-    activeObjects.forEach(obj => {
-      switch (direction) {
-        case "forward": obj.bringForward(true); break
-        case "backward": obj.sendBackwards(true); break
-        case "front": obj.bringToFront(); break
-        case "back": obj.sendToBack(); break
-      }
-    })
-    
-    fabricCanvas.requestRenderAll()
+  debugLog(`Changing position (${direction}) for ${activeObjects.length} objects`)
+  
+  // Preserve the selection
+  const selection = fabricCanvas.getActiveObject()
+  
+  // Process each object
+  activeObjects.forEach(obj => {
+    switch (direction) {
+      case "forward": 
+        // Use canvas method instead of object method
+        fabricCanvas.bringObjectForward(obj, true);
+        break;
+      case "backward": 
+        fabricCanvas.sendObjectBackwards(obj, true);
+        break;
+      case "front": 
+        fabricCanvas.bringObjectToFront(obj);
+        break;
+      case "back": 
+        fabricCanvas.sendObjectToBack(obj);
+        break;
+    }
+  })
+  
+  // Maintain selection after changing position
+  if (selection) {
+    fabricCanvas.setActiveObject(selection);
   }
+  
+  fabricCanvas.requestRenderAll()
+}
 
   const alignText = (alignment: "left" | "center" | "right") => {
     if (!fabricCanvas) return

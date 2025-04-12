@@ -270,13 +270,13 @@ export default function Toolbar() {
     <div className="bg-white border-b border-gray-200 p-2">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="text-white">
         <TabsList className="mb-2 bg-white border border-gray-200">
-          <TabsTrigger value="insert" className="text-white data-[state=active]:bg-gray-100">
+          <TabsTrigger value="insert" className="text-black ">
             Insert
           </TabsTrigger>
-          <TabsTrigger value="format" className="text-white data-[state=active]:bg-gray-100" disabled={!selectedObject}>
+          <TabsTrigger value="format" className="text-black" disabled={!selectedObject}>
             Format
           </TabsTrigger>
-          <TabsTrigger value="slide" className="text-white data-[state=active]:bg-gray-100">
+          <TabsTrigger value="slide" className="text-black">
             Slide
           </TabsTrigger>
         </TabsList>
