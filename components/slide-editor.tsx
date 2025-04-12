@@ -1,192 +1,146 @@
 "use client"
 
-import type React from "react"
-
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef } from "react"
 import * as fabric from "fabric"
-import type { Slide } from "@/lib/types"
+import { usePresentation } from "@/lib/presentation-context"
 import { useIsMobile } from "@/hooks/use-mobile"
 
-interface SlideEditorProps {
-  slide: Slide
-  updateSlide: (slide: Slide) => void
-  setFabricCanvas: (canvas: fabric.Canvas) => void
-  canvasRef: React.RefObject<HTMLCanvasElement>
-  currentSlideIndex: number
-}
-
-export default function SlideEditor({
-  slide,
-  updateSlide,
-  setFabricCanvas,
-  canvasRef,
-  currentSlideIndex,
-}: SlideEditorProps) {
+export default function SlideEditor() {
+  const { 
+    currentSlideIndex, 
+    fabricCanvas, 
+    setFabricCanvas,
+    presentation
+  } = usePresentation()
+  
   const containerRef = useRef<HTMLDivElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
   const isMobile = useIsMobile()
-  const [canvas, setCanvas] = useState<fabric.Canvas | null>(null)
-  const [isCanvasReady, setIsCanvasReady] = useState(false)
-  const prevSlideIdRef = useRef<string | null>(null)
+  const canvasInitialized = useRef(false)
 
-  // Initialize canvas
+  // Initialize canvas only once
   useEffect(() => {
-    if (!canvasRef.current) return
-
-    // Dispose of any existing canvas to prevent memory leaks
-    if (canvas) {
-      try {
-        canvas.dispose()
-      } catch (error) {
-        console.error("Error disposing canvas:", error)
-      }
-    }
-
+    if (!canvasRef.current || canvasInitialized.current) return
+  
     const initCanvas = () => {
       try {
-        const newCanvas = new fabric.Canvas(canvasRef.current, {
+        // Dispose previous canvas if exists
+        if (fabricCanvas) {
+          fabricCanvas.dispose()
+        }
+  
+        const newCanvas = new fabric.Canvas(canvasRef.current!, {
           width: 960,
           height: 540,
           backgroundColor: "#ffffff",
           preserveObjectStacking: true,
+          stopContextMenu: true // Prevent context menu for better user experience
         })
-
-        setCanvas(newCanvas)
+  
+        // Enable selection and other behaviors
+        newCanvas.selection = true
+        newCanvas.hoverCursor = 'pointer'
+        newCanvas.defaultCursor = 'default'
+        
+        // Add keyboard event handlers
+        document.addEventListener('keydown', (e) => {
+          // Handle delete key
+          if (e.key === 'Delete' && newCanvas.getActiveObjects().length > 0) {
+            newCanvas.getActiveObjects().forEach(obj => newCanvas.remove(obj))
+            newCanvas.discardActiveObject()
+            newCanvas.requestRenderAll()
+          }
+          
+          // Handle Ctrl+Z for undo
+          if (e.key === 'z' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault()
+            // You can add undo logic here if needed
+          }
+        })
+  
         setFabricCanvas(newCanvas)
-        setIsCanvasReady(true)
+        canvasInitialized.current = true
       } catch (error) {
         console.error("Error initializing canvas:", error)
-        // Try again after a short delay
+        // Retry with a delay
         setTimeout(initCanvas, 100)
       }
     }
-
-    // Use requestAnimationFrame to ensure the DOM is ready
-    requestAnimationFrame(initCanvas)
-
-    // Cleanup
+  
+    initCanvas()
+  
     return () => {
-      if (canvas) {
-        try {
-          canvas.dispose()
-        } catch (error) {
-          console.error("Error disposing canvas:", error)
-        }
+      // Cleanup on component unmount
+      if (fabricCanvas) {
+        fabricCanvas.dispose()
+        setFabricCanvas(null)
+        canvasInitialized.current = false
       }
     }
-  }, [canvasRef]) // Only re-initialize when canvasRef changes
+  }, []) // Empty dependency array ensures this runs only once
 
-  // Load slide content when slide changes
+  // Handle resize with less frequent updates
   useEffect(() => {
-    if (!canvas || !slide || !isCanvasReady) return
+    if (!fabricCanvas || !containerRef.current) return
 
-    // Only update if the slide has changed
-    if (prevSlideIdRef.current === slide.id && prevSlideIdRef.current !== null) {
-      return
-    }
-
-    prevSlideIdRef.current = slide.id
-
-    try {
-      // Clear canvas
-      canvas.clear()
-      canvas.backgroundColor = slide.background || "#ffffff"
-
-      // Load objects from slide
-      if (slide.objects && slide.objects.length > 0) {
-        fabric.util.enlivenObjects(
-          slide.objects,
-          (objects) => {
-            objects.forEach((obj) => {
-              canvas.add(obj)
-            })
-            canvas.renderAll()
-          },
-          "fabric",
-        )
-      } else {
-        canvas.renderAll()
-      }
-    } catch (error) {
-      console.error("Error loading slide content:", error)
-    }
-  }, [canvas, slide, isCanvasReady, currentSlideIndex])
-
-  // Set up event listeners for canvas changes
-  useEffect(() => {
-    if (!canvas || !isCanvasReady || !slide) return
-
-    // Save canvas state when objects are modified
-    const saveCanvasState = () => {
-      try {
-        const json = canvas.toJSON(["id", "type"])
-        updateSlide({
-          ...slide,
-          objects: json.objects || [],
-          background: json.background as string,
-        })
-      } catch (error) {
-        console.error("Error saving canvas state:", error)
-      }
-    }
-
-    canvas.on("object:modified", saveCanvasState)
-    canvas.on("object:added", saveCanvasState)
-    canvas.on("object:removed", saveCanvasState)
-
-    return () => {
-      canvas.off("object:modified", saveCanvasState)
-      canvas.off("object:added", saveCanvasState)
-      canvas.off("object:removed", saveCanvasState)
-    }
-  }, [canvas, isCanvasReady, slide, updateSlide])
-
-  // Resize canvas on window resize
-  useEffect(() => {
-    if (!canvas || !containerRef.current || !isCanvasReady) return
-
+    let resizeTimeout: NodeJS.Timeout | null = null
+    
     const handleResize = () => {
-      if (!containerRef.current) return
+      const container = containerRef.current!
+      if (!container) return
+      
+      const slideWidth = 960
+      const slideHeight = 540
 
-      try {
-        const containerWidth = containerRef.current.clientWidth
-        const containerHeight = containerRef.current.clientHeight
+      const scale = Math.min(
+        container.clientWidth / slideWidth,
+        container.clientHeight / slideHeight,
+        isMobile ? 0.8 : 1
+      )
 
-        // Maintain 16:9 aspect ratio
-        const slideWidth = 960
-        const slideHeight = 540
-
-        let scale = Math.min(containerWidth / slideWidth, containerHeight / slideHeight)
-
-        // Limit scale on mobile
-        if (isMobile) {
-          scale = Math.min(scale, 0.8)
-        }
-
-        canvas.setZoom(scale)
-        canvas.setDimensions({
-          width: slideWidth * scale,
-          height: slideHeight * scale,
-        })
-
-        canvas.renderAll()
-      } catch (error) {
-        console.error("Error resizing canvas:", error)
-      }
+      fabricCanvas.setZoom(scale)
+      fabricCanvas.setDimensions({
+        width: slideWidth * scale,
+        height: slideHeight * scale,
+      })
+      fabricCanvas.renderAll()
     }
 
+    // Throttle resize for better performance
+    const throttledResize = () => {
+      if (resizeTimeout) clearTimeout(resizeTimeout)
+      resizeTimeout = setTimeout(() => {
+        handleResize()
+      }, 100)
+    }
+
+    // Initial size
     handleResize()
-    window.addEventListener("resize", handleResize)
-
+    
+    // Add event listener
+    window.addEventListener("resize", throttledResize)
+    
     return () => {
-      window.removeEventListener("resize", handleResize)
+      if (resizeTimeout) clearTimeout(resizeTimeout)
+      window.removeEventListener("resize", throttledResize)
     }
-  }, [canvas, isMobile, isCanvasReady])
+  }, [fabricCanvas, isMobile])
 
   return (
-    <div ref={containerRef} className="relative flex items-center justify-center w-full h-full">
-      <div className="shadow-lg">
+    <div 
+      ref={containerRef} 
+      className="relative flex items-center justify-center w-full h-full bg-gray-50"
+    >
+      <div className="shadow-lg rounded-sm overflow-hidden">
         <canvas ref={canvasRef} id="fabric-canvas" width="960" height="540" />
       </div>
+      
+      {/* Optional loading indicator */}
+      {/* {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/10">
+          <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full"></div>
+        </div>
+      )} */}
     </div>
   )
 }

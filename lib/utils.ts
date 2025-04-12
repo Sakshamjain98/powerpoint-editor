@@ -9,7 +9,7 @@ export function cn(...inputs: ClassValue[]) {
 
 export function createEmptySlide(): Slide {
   return {
-    id: uuidv4(),
+    id: `slide-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     background: "#ffffff",
     objects: [],
   }

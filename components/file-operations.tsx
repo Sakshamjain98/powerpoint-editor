@@ -1,248 +1,79 @@
 "use client"
 
-import type React from "react"
-import { 
-  exportAsPDF, 
-  exportAsPPTX, 
-  exportPresentationToPDF, 
-  exportPresentationToPPTX 
-} from "./Export";
-import { useState } from "react"
-import type { Presentation, Slide } from "@/lib/types"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { FileUp, FilePlus, Save, Undo2, Redo2, FileText, HelpCircle, Download } from "lucide-react"
-import * as fabric from "fabric"
-import pptxgen from "pptxgenjs"
-import { jsPDF } from "jspdf"
-// import { saveAs } from "file-saver";
-import { createEmptySlide, clonePresentation } from "@/lib/utils"
+import { usePresentation } from "@/lib/presentation-context"
+import { exportAsPDF, exportAsPPTX } from "./Export"
 
-interface FileOperationsProps {
-  presentation: Presentation
-  createNewPresentation: () => void
-  setPresentation: (presentation: Presentation) => void
-  undo: () => void
-  redo: () => void
-  canUndo: boolean
-  canRedo: boolean
-  fabricCanvas: fabric.Canvas | null
-}
-
-export default function FileOperations({
-  presentation,
-  createNewPresentation,
-  setPresentation,
-  undo,
-  redo,
-  canUndo,
-  canRedo,
-  fabricCanvas,
-}: FileOperationsProps) {
+export default function FileOperations() {
+  const {
+    presentation,
+    currentSlideIndex,
+    fabricCanvas,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    setPresentation,
+    addSlide
+  } = usePresentation()
+  
   const [title, setTitle] = useState(presentation.title)
   const [showHelp, setShowHelp] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
 
-  // Handle title change
+  useEffect(() => {
+    setTitle(presentation.title)
+  }, [presentation.title])
+
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setTitle(e.target.value)
-    // Update presentation title
-    const updatedPresentation = clonePresentation(presentation)
-    updatedPresentation.title = e.target.value
-    setPresentation(updatedPresentation)
+    setPresentation({
+      ...presentation,
+      title: e.target.value
+    })
   }
 
-  // Upload PPTX
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Implement PPTX upload if needed
+  }
+
+  const exportToPPTX = async () => {
+    if (isExporting || !fabricCanvas) return
+    setIsExporting(true)
     
-  }
-
-  // Helper function to create a slide with title and content
-  const createSlideWithContent = (title: string, content: string, bgColor: string): Slide => {
-    const slide = createEmptySlide()
-    slide.background = bgColor
-
-    // Create objects array for the slide
-    const objects = []
-
-    // Add title object
-    objects.push({
-      type: "i-text",
-      version: "5.3.0",
-      originX: "left",
-      originY: "top",
-      left: 100,
-      top: 80,
-      width: 760,
-      height: 50,
-      fill: "#000000",
-      stroke: null,
-      strokeWidth: 1,
-      strokeDashArray: null,
-      strokeLineCap: "butt",
-      strokeDashOffset: 0,
-      strokeLineJoin: "miter",
-      strokeUniform: false,
-      strokeMiterLimit: 4,
-      scaleX: 1,
-      scaleY: 1,
-      angle: 0,
-      flipX: false,
-      flipY: false,
-      opacity: 1,
-      shadow: null,
-      visible: true,
-      backgroundColor: "",
-      fillRule: "nonzero",
-      paintFirst: "fill",
-      globalCompositeOperation: "source-over",
-      skewX: 0,
-      skewY: 0,
-      text: title,
-      fontSize: 40,
-      fontWeight: "bold",
-      fontFamily: "Arial",
-      fontStyle: "normal",
-      lineHeight: 1.16,
-      underline: false,
-      overline: false,
-      linethrough: false,
-      textAlign: "left",
-      textBackgroundColor: "",
-      charSpacing: 0,
-      styles: {},
-    })
-
-    // Add content object
-    objects.push({
-      type: "i-text",
-      version: "5.3.0",
-      originX: "left",
-      originY: "top",
-      left: 100,
-      top: 180,
-      width: 760,
-      height: 200,
-      fill: "#000000",
-      stroke: null,
-      strokeWidth: 1,
-      strokeDashArray: null,
-      strokeLineCap: "butt",
-      strokeDashOffset: 0,
-      strokeLineJoin: "miter",
-      strokeUniform: false,
-      strokeMiterLimit: 4,
-      scaleX: 1,
-      scaleY: 1,
-      angle: 0,
-      flipX: false,
-      flipY: false,
-      opacity: 1,
-      shadow: null,
-      visible: true,
-      backgroundColor: "",
-      fillRule: "nonzero",
-      paintFirst: "fill",
-      globalCompositeOperation: "source-over",
-      skewX: 0,
-      skewY: 0,
-      text: content,
-      fontSize: 24,
-      fontWeight: "normal",
-      fontFamily: "Arial",
-      fontStyle: "normal",
-      lineHeight: 1.16,
-      underline: false,
-      overline: false,
-      linethrough: false,
-      textAlign: "left",
-      textBackgroundColor: "",
-      charSpacing: 0,
-      styles: {},
-    })
-
-    slide.objects = objects
-    return slide
-  }
-
- // Export to PPTX
-// Replace your existing exportToPPTX function with:
-const exportToPPTX = async () => {
-  if (isExporting || !fabricCanvas) return;
-  setIsExporting(true);
-
-  try {
-    if (presentation.slides.length === 1) {
-      // Single slide export - just use the current fabricCanvas
+    try {
       await exportAsPPTX(fabricCanvas, title || "presentation", {
-        background: presentation.slides[0].background
-      });
-    } else {
-      // Multi-slide export - need to render each slide
-      // This requires a different approach where we have access to each slide's canvas
-      // You would need to pass the canvases for all slides to this component
-      
-      // Assuming you have a way to access all slide canvases or can render them:
-      const slideCanvases = await Promise.all(presentation.slides.map(async (slide, index) => {
-        // If you have a function that can render a slide to a canvas:
-        // const canvas = await renderSlideToCanvas(slide);
-        
-        // For now, we'll just use the current canvas for demonstration
-        // This would need to be replaced with actual slide canvases
-        return {
-          canvas: fabricCanvas,
-          background: slide.background
-        };
-      }));
-      
-      await exportPresentationToPPTX(slideCanvases, title || "presentation");
+        background: presentation.slides[currentSlideIndex].background
+      })
+    } catch (error) {
+      console.error("Error exporting to PPTX:", error)
+      alert("Error exporting to PPTX. Please try again.")
+    } finally {
+      setIsExporting(false)
     }
-  } catch (error) {
-    console.error("Error exporting to PPTX:", error);
-    alert("Error exporting to PPTX. Please try again.");
-  } finally {
-    setIsExporting(false);
   }
-};
 
-// Replace your existing exportToPDF function with:
-const exportToPDF = async () => {
-  if (isExporting || !fabricCanvas) return;
-  setIsExporting(true);
-
-  try {
-    if (presentation.slides.length === 1) {
-      // Single slide export
-      exportAsPDF(fabricCanvas, title || "presentation");
-    } else {
-      // Multi-slide export
-      // Similar to PPTX, you need access to all slide canvases
-      const slideCanvases = await Promise.all(presentation.slides.map(async (slide, index) => {
-        // If you have a function that can render a slide to a canvas:
-        // const canvas = await renderSlideToCanvas(slide);
-        
-        // For now, we'll just use the current canvas for demonstration
-        return { canvas: fabricCanvas };
-      }));
-      
-      exportPresentationToPDF(slideCanvases, title || "presentation");
+  const exportToPDF = async () => {
+    if (isExporting || !fabricCanvas) return
+    setIsExporting(true)
+    
+    try {
+      exportAsPDF(fabricCanvas, title || "presentation")
+    } catch (error) {
+      console.error("Error exporting to PDF:", error)
+      alert("Error exporting to PDF. Please try again.")
+    } finally {
+      setIsExporting(false)
     }
-  } catch (error) {
-    console.error("Error exporting to PDF:", error);
-    alert("Error exporting to PDF. Please try again.");
-  } finally {
-    setIsExporting(false);
   }
-};
 
-  // Save presentation
   const savePresentation = () => {
     try {
-      // In a real app, this would save to a server or local storage
-      // For this demo, we'll save to localStorage
-      const presentationData = JSON.stringify(presentation)
-      localStorage.setItem("savedPresentation", presentationData)
+      localStorage.setItem("savedPresentation", JSON.stringify(presentation))
       alert("Presentation saved successfully!")
     } catch (error) {
       console.error("Error saving presentation:", error)
@@ -250,9 +81,16 @@ const exportToPDF = async () => {
     }
   }
 
-  // Toggle help
   const toggleHelp = () => {
     setShowHelp(!showHelp)
+  }
+
+  const createNewPresentation = () => {
+    setPresentation({
+      title: "Untitled Presentation",
+      slides: [createEmptySlide()],
+    })
+    setCurrentSlideIndex(0)
   }
 
   return (
@@ -261,7 +99,7 @@ const exportToPDF = async () => {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={createNewPresentation} className="h-9 w-9 text-black">
+              <Button variant="ghost" size="icon" onClick={createNewPresentation} className="h-9 w-9">
                 <FilePlus className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
@@ -274,7 +112,7 @@ const exportToPDF = async () => {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" asChild className="h-9 w-9 text-black">
+              <Button variant="ghost" size="icon" asChild className="h-9 w-9">
                 <label>
                   <FileUp className="h-5 w-5" />
                   <input type="file" accept=".pptx" className="sr-only" onChange={handleUpload} />
@@ -295,7 +133,7 @@ const exportToPDF = async () => {
                 size="icon"
                 onClick={exportToPPTX}
                 disabled={isExporting}
-                className="h-9 w-9 text-black"
+                className="h-9 w-9"
               >
                 <Download className="h-5 w-5" />
               </Button>
@@ -314,7 +152,7 @@ const exportToPDF = async () => {
                 size="icon"
                 onClick={exportToPDF}
                 disabled={isExporting}
-                className="h-9 w-9 text-black"
+                className="h-9 w-9"
               >
                 <FileText className="h-5 w-5" />
               </Button>
@@ -328,7 +166,7 @@ const exportToPDF = async () => {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={savePresentation} className="h-9 w-9 text-black">
+              <Button variant="ghost" size="icon" onClick={savePresentation} className="h-9 w-9">
                 <Save className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
@@ -343,7 +181,7 @@ const exportToPDF = async () => {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={undo} disabled={!canUndo} className="h-9 w-9 text-black">
+              <Button variant="ghost" size="icon" onClick={undo} disabled={!canUndo} className="h-9 w-9">
                 <Undo2 className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
@@ -356,7 +194,7 @@ const exportToPDF = async () => {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={redo} disabled={!canRedo} className="h-9 w-9 text-black">
+              <Button variant="ghost" size="icon" onClick={redo} disabled={!canRedo} className="h-9 w-9">
                 <Redo2 className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
@@ -377,7 +215,7 @@ const exportToPDF = async () => {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={toggleHelp} className="h-9 w-9 text-black">
+              <Button variant="ghost" size="icon" onClick={toggleHelp} className="h-9 w-9">
                 <HelpCircle className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
@@ -391,8 +229,8 @@ const exportToPDF = async () => {
       {showHelp && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={toggleHelp}>
           <div className="bg-white p-6 rounded-lg shadow-lg max-w-2xl" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-xl font-bold mb-4 text-black">PowerPoint Editor Help</h2>
-            <div className="space-y-4 text-black">
+            <h2 className="text-xl font-bold mb-4 text-white">PowerPoint Editor Help</h2>
+            <div className="space-y-4 text-white">
               <div>
                 <h3 className="font-semibold">Navigation</h3>
                 <p>Use the slide thumbnails on the left to navigate between slides. Click on a slide to select it.</p>
@@ -418,7 +256,7 @@ const exportToPDF = async () => {
               </div>
             </div>
             <div className="mt-6 flex justify-end">
-              <Button onClick={toggleHelp} className="bg-gray-800 hover:bg-gray-800 text-white">
+              <Button onClick={toggleHelp} className="bg-gray-800 hover:bg-gray-700 text-white">
                 Close
               </Button>
             </div>

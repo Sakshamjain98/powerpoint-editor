@@ -1,20 +1,3 @@
-export interface Slide {
-  id: string
-  background?: string
-  objects?: any[]
-  fabricState?: {
-    version: string
-    objects: any[]
-    background?: string
-  }
-}
-
-export interface Presentation {
-  title: string
-  slides: Slide[]
-}
-
-
 import 'fabric'
 
 declare module 'fabric' {

@@ -1,31 +1,22 @@
 "use client"
 
-import type React from "react"
-
 import { useState } from "react"
-import type { Slide } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Plus, Trash2, ChevronUp, ChevronDown, Maximize2, Minimize2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { usePresentation } from "@/lib/presentation-context"
 
-interface SlideNavigatorProps {
-  slides: Slide[]
-  currentSlideIndex: number
-  setCurrentSlideIndex: (index: number) => void
-  addSlide: () => void
-  deleteSlide: () => void
-  reorderSlides: (fromIndex: number, toIndex: number) => void
-}
-
-export default function SlideNavigator({
-  slides,
-  currentSlideIndex,
-  setCurrentSlideIndex,
-  addSlide,
-  deleteSlide,
-  reorderSlides,
-}: SlideNavigatorProps) {
+export default function SlideNavigator() {
+  const {
+    presentation,
+    currentSlideIndex,
+    setCurrentSlideIndex,
+    addSlide,
+    deleteSlide,
+    reorderSlides
+  } = usePresentation()
+  
   const [expanded, setExpanded] = useState(true)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
 
@@ -77,20 +68,44 @@ export default function SlideNavigator({
   }
 
   const moveSlideDown = (index: number) => {
-    if (index < slides.length - 1) {
+    if (index < presentation.slides.length - 1) {
       reorderSlides(index, index + 1)
     }
   }
 
+  const renderSlideThumbnail = (slide: any, index: number) => {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div
+          className="w-[80%] h-[60%] flex items-center justify-center text-xs"
+          style={{ backgroundColor: slide.background || "#ffffff" }}
+        >
+          {slide.fabricState ? (
+            <div className="w-full h-full relative">
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span>{index + 1}</span>
+              </div>
+              {slide.fabricState && (
+                <div className="absolute bottom-1 right-1">
+                  <div className="w-2 h-2 bg-black rounded-full"></div>
+                </div>
+              )}
+            </div>
+          ) : (
+            index + 1
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div
-      className={cn(
-        "bg-white border-r border-gray-200 flex flex-col transition-all duration-300",
-        expanded ? "w-64" : "w-20",
-      )}
-    >
+    <div className={cn(
+      "bg-white border-r border-gray-200 flex flex-col transition-all duration-300",
+      expanded ? "w-64" : "w-20",
+    )}>
       <div className="p-2 flex justify-between items-center border-b border-gray-200">
-        <h2 className={cn("font-medium text-black", expanded ? "block" : "hidden")}>Slides</h2>
+        <h2 className={cn("font-medium text-white", expanded ? "block" : "hidden")}>Slides</h2>
         <div className="flex gap-1">
           <TooltipProvider>
             <Tooltip>
@@ -99,7 +114,7 @@ export default function SlideNavigator({
                   variant="ghost"
                   size="icon"
                   onClick={() => setExpanded(!expanded)}
-                  className="h-8 w-8 text-white hover:bg-black"
+                  className="h-8 w-8"
                 >
                   {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
                 </Button>
@@ -113,7 +128,7 @@ export default function SlideNavigator({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={addSlide} className="h-8 w-8 text-white hover:bg-black">
+                <Button variant="ghost" size="icon" onClick={addSlide} className="h-8 w-8">
                   <Plus className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
@@ -130,8 +145,8 @@ export default function SlideNavigator({
                   variant="ghost"
                   size="icon"
                   onClick={deleteSlide}
-                  disabled={slides.length <= 1}
-                  className="h-8 w-8 text-white hover:bg-black"
+                  disabled={presentation.slides.length <= 1}
+                  className="h-8 w-8"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -145,7 +160,7 @@ export default function SlideNavigator({
       </div>
 
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
-        {slides.map((slide, index) => (
+        {presentation.slides.map((slide, index) => (
           <div
             key={slide.id}
             data-index={index}
@@ -162,14 +177,7 @@ export default function SlideNavigator({
               expanded ? "h-24" : "h-16",
             )}
           >
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div
-                className="w-[80%] h-[60%] flex items-center justify-center text-xs text-gray-500"
-                style={{ backgroundColor: slide.background || "#ffffff" }}
-              >
-                {index + 1}
-              </div>
-            </div>
+            {renderSlideThumbnail(slide, index)}
 
             {expanded && (
               <div className="absolute right-1 top-1 opacity-0 group-hover:opacity-100 flex gap-1">
@@ -181,7 +189,7 @@ export default function SlideNavigator({
                     moveSlideUp(index)
                   }}
                   disabled={index === 0}
-                  className="h-6 w-6 bg-white/80 text-white hover:bg-black"
+                  className="h-6 w-6 bg-white/80"
                 >
                   <ChevronUp className="h-3 w-3" />
                 </Button>
@@ -192,20 +200,18 @@ export default function SlideNavigator({
                     e.stopPropagation()
                     moveSlideDown(index)
                   }}
-                  disabled={index === slides.length - 1}
-                  className="h-6 w-6 bg-white/80 text-white hover:bg-black"
+                  disabled={index === presentation.slides.length - 1}
+                  className="h-6 w-6 bg-white/80"
                 >
                   <ChevronDown className="h-3 w-3" />
                 </Button>
               </div>
             )}
 
-            <div
-              className={cn(
-                "absolute bottom-1 left-0 right-0 text-center text-xs text-black",
-                expanded ? "block" : "hidden",
-              )}
-            >
+            <div className={cn(
+              "absolute bottom-1 left-0 right-0 text-center text-xs",
+              expanded ? "block" : "hidden",
+            )}>
               Slide {index + 1}
             </div>
           </div>
