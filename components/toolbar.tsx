@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Slider } from "@/components/ui/slider"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -29,8 +31,41 @@ import {
   FlipVertical,
   MoveDown,
   MoveUp,
+  PencilIcon,
+  EraserIcon,
+  Paintbrush,
+  Droplets,
+  Minus,
+  Plus,
+  Check,
+  Star,
+  Heart,
+  Hexagon,
+  Pentagon,
+  Octagon,
+  ArrowRight,
+  ArrowLeftRight,
+  Cross,
+  Zap
 } from "lucide-react"
 import { usePresentation } from "@/lib/presentation-context"
+import { shapeDefinitions, shapeTypes } from "@/lib/shapes/shape-definitions"
+
+const colorPresets = [
+  "#ffffff", "#f8f9fa", "#e9ecef", "#dee2e6", "#ced4da",
+  "#f8d7da", "#d1e7dd", "#cff4fc", "#fff3cd", "#d3d3d3",
+  "#000000", "#495057", "#343a40", "#212529",
+  "#dc3545", "#fd7e14", "#ffc107", "#28a745", "#007bff", "#6f42c1"
+]
+
+const brushSizes = [
+  { value: 1, label: "1px" },
+  { value: 3, label: "3px" },
+  { value: 5, label: "5px" },
+  { value: 8, label: "8px" },
+  { value: 10, label: "10px" },
+  { value: 15, label: "15px" }
+]
 
 export default function Toolbar() {
   const { fabricCanvas, currentSlide, updateCurrentSlide, duplicateSelected, changeObjectPosition, alignText } = usePresentation()
@@ -38,6 +73,13 @@ export default function Toolbar() {
   const [bgColor, setBgColor] = useState(currentSlide?.background || "#ffffff")
   const [isUploading, setIsUploading] = useState(false)
   const [selectedObject, setSelectedObject] = useState<fabric.Object | null>(null)
+  const [isDrawingMode, setIsDrawingMode] = useState(false)
+  const [isErasing, setIsErasing] = useState(false)
+  const [drawingColor, setDrawingColor] = useState("#000000")
+  const [brushWidth, setBrushWidth] = useState(5)
+  const [drawingOpacity, setDrawingOpacity] = useState(100)
+  const [drawingTab, setDrawingTab] = useState("colors")
+  const [objectColor, setObjectColor] = useState("#000000")
 
   useEffect(() => {
     if (currentSlide) {
@@ -49,7 +91,16 @@ export default function Toolbar() {
     if (!fabricCanvas) return
 
     const handleSelection = () => {
-      setSelectedObject(fabricCanvas.getActiveObject())
+      const activeObj = fabricCanvas.getActiveObject()
+      setSelectedObject(activeObj)
+      // Update color picker based on selected object
+      if (activeObj) {
+        if (activeObj instanceof fabric.IText) {
+          setObjectColor(activeObj.fill?.toString() || "#000000")
+        } else {
+          setObjectColor(activeObj.fill?.toString() || "#000000")
+        }
+      }
     }
 
     fabricCanvas.on('selection:created', handleSelection)
@@ -63,6 +114,83 @@ export default function Toolbar() {
     }
   }, [fabricCanvas])
 
+  // Initialize the drawing brush
+  useEffect(() => {
+    if (!fabricCanvas) return
+    
+    // Initialize the free drawing brush if it doesn't exist
+    if (!fabricCanvas.freeDrawingBrush) {
+      fabricCanvas.freeDrawingBrush = new fabric.PencilBrush(fabricCanvas)
+    }
+    
+    // Apply settings when brush exists
+    fabricCanvas.freeDrawingBrush.color = drawingColor
+    fabricCanvas.freeDrawingBrush.width = brushWidth
+    fabricCanvas.freeDrawingBrush.opacity = drawingOpacity / 100
+    
+  }, [fabricCanvas, drawingColor, brushWidth, drawingOpacity, isDrawingMode])
+
+  // Drawing functions
+  const handleToggleDrawingMode = () => {
+    if (!fabricCanvas) return
+    const newMode = !isDrawingMode
+    setIsDrawingMode(newMode)
+
+    if (newMode && isErasing) {
+      setIsErasing(false)
+    }
+
+    fabricCanvas.isDrawingMode = newMode
+    
+    // Ensure brush is initialized when entering drawing mode
+    if (newMode && !fabricCanvas.freeDrawingBrush) {
+      fabricCanvas.freeDrawingBrush = new fabric.PencilBrush(fabricCanvas)
+    }
+    
+    if (newMode && fabricCanvas.freeDrawingBrush) {
+      fabricCanvas.freeDrawingBrush.color = isErasing ? "#ffffff" : drawingColor
+      fabricCanvas.freeDrawingBrush.width = isErasing ? brushWidth * 2 : brushWidth
+      fabricCanvas.freeDrawingBrush.opacity = drawingOpacity / 100
+    }
+  }
+
+  const handleDrawingColorChange = (color: string) => {
+    setDrawingColor(color)
+    if (fabricCanvas && fabricCanvas.freeDrawingBrush && isDrawingMode && !isErasing) {
+      fabricCanvas.freeDrawingBrush.color = color
+    }
+  }
+
+  const handleBrushWidthChange = (width: number) => {
+    setBrushWidth(width)
+    if (fabricCanvas && fabricCanvas.freeDrawingBrush && isDrawingMode) {
+      fabricCanvas.freeDrawingBrush.width = isErasing ? width * 2 : width
+    }
+  }
+
+  const handleDrawingOpacityChange = (value: number) => {
+    const opacity = Number(value)
+    setDrawingOpacity(opacity)
+    if (fabricCanvas && fabricCanvas.freeDrawingBrush && isDrawingMode) {
+      fabricCanvas.freeDrawingBrush.opacity = opacity / 100
+    }
+  }
+
+  const handleToggleErasing = () => {
+    if (!fabricCanvas || !isDrawingMode || !fabricCanvas.freeDrawingBrush) return
+    const newErasing = !isErasing
+    setIsErasing(newErasing)
+
+    if (newErasing) {
+      fabricCanvas.freeDrawingBrush.color = "#ffffff"
+      fabricCanvas.freeDrawingBrush.width = brushWidth * 2
+    } else {
+      fabricCanvas.freeDrawingBrush.color = drawingColor
+      fabricCanvas.freeDrawingBrush.width = brushWidth
+    }
+  }
+
+  // Insert functions
   const addText = () => {
     if (!fabricCanvas) return
 
@@ -71,7 +199,7 @@ export default function Toolbar() {
       top: 100,
       fontFamily: "Arial",
       fontSize: 24,
-      fill: "#000000",
+      fill: objectColor,
     })
 
     fabricCanvas.add(text)
@@ -79,45 +207,20 @@ export default function Toolbar() {
     fabricCanvas.renderAll()
   }
 
-  const addShape = (type: "rect" | "circle" | "triangle") => {
+  const addShape = (type: string) => {
     if (!fabricCanvas) return
 
-    let shape: fabric.Object
+    const shape = createShape(fabric, type, shapeDefinitions, {
+      left: 100,
+      top: 100,
+      fill: objectColor
+    })
 
-    switch (type) {
-      case "rect":
-        shape = new fabric.Rect({
-          left: 100,
-          top: 100,
-          width: 100,
-          height: 100,
-          fill: "#000000",
-        })
-        break
-      case "circle":
-        shape = new fabric.Circle({
-          left: 100,
-          top: 100,
-          radius: 50,
-          fill: "#000000",
-        })
-        break
-      case "triangle":
-        shape = new fabric.Triangle({
-          left: 100,
-          top: 100,
-          width: 100,
-          height: 100,
-          fill: "#000000",
-        })
-        break
-      default:
-        return
+    if (shape) {
+      fabricCanvas.add(shape)
+      fabricCanvas.setActiveObject(shape)
+      fabricCanvas.renderAll()
     }
-
-    fabricCanvas.add(shape)
-    fabricCanvas.setActiveObject(shape)
-    fabricCanvas.renderAll()
   }
 
   const uploadImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -186,6 +289,7 @@ export default function Toolbar() {
     }
   }
 
+  // Format functions
   const changeBackgroundColor = (color: string) => {
     if (!fabricCanvas) return
 
@@ -197,6 +301,20 @@ export default function Toolbar() {
       ...currentSlide,
       background: color,
     })
+  }
+
+  const changeObjectColor = (color: string) => {
+    if (!fabricCanvas || !selectedObject) return
+    
+    setObjectColor(color)
+    
+    if (selectedObject instanceof fabric.IText) {
+      selectedObject.set('fill', color)
+    } else {
+      selectedObject.set('fill', color)
+    }
+    
+    fabricCanvas.renderAll()
   }
 
   const deleteSelected = () => {
@@ -266,12 +384,122 @@ export default function Toolbar() {
     fabricCanvas.renderAll()
   }
 
+  // Shape creation helper
+  const createShape = (fabric: any, type: string, definitions: any, customProps: any = {}) => {
+    const definition = definitions[type]
+    if (!definition) return null
+  
+    const props = { ...definition.defaultProps, ...customProps }
+  
+    switch (definition.type) {
+      case "rect":
+        return new fabric.Rect(props)
+      case "circle":
+        return new fabric.Circle(props)
+      case "triangle":
+        return new fabric.Triangle(props)
+      case "ellipse":
+        return new fabric.Ellipse(props)
+      case "line":
+        return new fabric.Line([props.x1, props.y1, props.x2, props.y2], {
+          stroke: props.stroke,
+          strokeWidth: props.strokeWidth,
+          ...customProps,
+        })
+      case "polygon":
+        const left = props.left || 100
+        const top = props.top || 100
+        let points = []
+  
+        if (type === "star") {
+          const outerRadius = 50
+          const innerRadius = 25
+          const center = { x: left, y: top }
+          const numPoints = 5
+  
+          for (let i = 0; i < numPoints * 2; i++) {
+            const radius = i % 2 === 0 ? outerRadius : innerRadius
+            const angle = (i * Math.PI) / numPoints
+            points.push({
+              x: center.x + radius * Math.cos(angle),
+              y: center.y + radius * Math.sin(angle),
+            })
+          }
+        } else if (type === "pentagon" || type === "hexagon" || type === "octagon") {
+          const radius = 50
+          const center = { x: left, y: top }
+          const sides = type === "pentagon" ? 5 : type === "hexagon" ? 6 : 8
+          const startAngle = type === "pentagon" ? -Math.PI / 2 : 0
+  
+          for (let i = 0; i < sides; i++) {
+            const angle = startAngle + (i * 2 * Math.PI) / sides
+            points.push({
+              x: center.x + radius * Math.cos(angle),
+              y: center.y + radius * Math.sin(angle),
+            })
+          }
+        } else if (props.points && props.points.length > 0) {
+          points = props.points
+        }
+  
+        return new fabric.Polygon(points, {
+          fill: props.fill,
+          ...customProps,
+        })
+      case "path":
+        return new fabric.Path(props.path, props)
+      default:
+        return null
+    }
+  }
+
+  const ColorPalette = ({ color, onChange }: { color: string, onChange: (color: string) => void }) => (
+    <div className="space-y-3">
+      <div className="flex justify-between items-center">
+        <Label>Color Palette</Label>
+        <div
+          className="w-6 h-6 rounded-full border shadow-sm"
+          style={{ backgroundColor: color }}
+        />
+      </div>
+      <div className="grid grid-cols-5 gap-2">
+        {colorPresets.map((presetColor) => (
+          <button
+            key={presetColor}
+            className={`w-10 h-10 rounded-full border transition-transform hover:scale-110 ${
+              presetColor === color ? "ring-1 ring-offset-2 ring-primary" : ""
+            }`}
+            onClick={() => onChange(presetColor)}
+            style={{ backgroundColor: presetColor }}
+          />
+        ))}
+      </div>
+      <div className="flex mt-5 space-x-2">
+        <Input
+          type="color"
+          value={color}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-12 h-10 p-1 cursor-pointer"
+        />
+        <Input
+          type="text"
+          value={color}
+          onChange={(e) => onChange(e.target.value)}
+          className="flex-1"
+        />
+      </div>
+    </div>
+  )
+
   return (
     <div className="bg-white border-b border-gray-200 p-2">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="text-white">
         <TabsList className="mb-2 bg-white border border-gray-200">
-          <TabsTrigger value="insert" className="text-black ">
+          <TabsTrigger value="insert" className="text-black">
             Insert
+          </TabsTrigger>
+          <TabsTrigger value="draw" className="text-black">
+            Draw
           </TabsTrigger>
           <TabsTrigger value="format" className="text-black" disabled={!selectedObject}>
             Format
@@ -281,7 +509,9 @@ export default function Toolbar() {
           </TabsTrigger>
         </TabsList>
 
+        {/* Insert Tab */}
         <TabsContent value="insert" className="flex flex-wrap gap-2">
+          {/* Text */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -295,10 +525,11 @@ export default function Toolbar() {
             </Tooltip>
           </TooltipProvider>
 
+          {/* Basic Shapes */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="outline" size="icon" onClick={() => addShape("rect")} className="h-10 w-10">
+                <Button variant="outline" size="icon" onClick={() => addShape("rectangle")} className="h-10 w-10">
                   <Square className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
@@ -334,6 +565,47 @@ export default function Toolbar() {
             </Tooltip>
           </TooltipProvider>
 
+          {/* Advanced Shapes */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="icon" className="h-10 w-10">
+                <Zap className="h-5 w-5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64">
+              <div className="grid grid-cols-3 gap-2">
+                <Button variant="outline" size="icon" onClick={() => addShape("ellipse")} className="h-10 w-10">
+                  <Circle className="h-5 w-5" />
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => addShape("star")} className="h-10 w-10">
+                  <Star className="h-5 w-5" />
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => addShape("heart")} className="h-10 w-10">
+                  <Heart className="h-5 w-5" />
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => addShape("pentagon")} className="h-10 w-10">
+                  <Pentagon className="h-5 w-5" />
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => addShape("hexagon")} className="h-10 w-10">
+                  <Hexagon className="h-5 w-5" />
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => addShape("octagon")} className="h-10 w-10">
+                  <Octagon className="h-5 w-5" />
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => addShape("arrow")} className="h-10 w-10">
+                  <ArrowRight className="h-5 w-5" />
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => addShape("doubleArrow")} className="h-10 w-10">
+                  <ArrowLeftRight className="h-5 w-5" />
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => addShape("cross")} className="h-10 w-10">
+                  <Cross className="h-5 w-5" />
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* Image */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -355,9 +627,132 @@ export default function Toolbar() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+
+          {/* Color Picker for Objects */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="icon" className="h-10 w-10">
+                <Palette className="h-5 w-5" />
+                <div 
+                  className="absolute w-3 h-3 bottom-1 right-1 rounded-full border border-white" 
+                  style={{ backgroundColor: objectColor }}
+                />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64">
+              <ColorPalette color={objectColor} onChange={changeObjectColor} />
+            </PopoverContent>
+          </Popover>
         </TabsContent>
 
+        {/* Draw Tab */}
+        <TabsContent value="draw" className="space-y-4">
+          <Button
+            variant={isDrawingMode ? "default" : "outline"}
+            className="w-full"
+            onClick={handleToggleDrawingMode}
+          >
+            <PencilIcon className="mr-2 h-5 w-5" />
+            {isDrawingMode ? "Exit Drawing Mode" : "Enter Drawing Mode"}
+          </Button>
+
+          {isDrawingMode && (
+            <>
+              <Tabs value={drawingTab} onValueChange={setDrawingTab} className="w-full">
+                <TabsList className="grid grid-cols-3 mb-4">
+                  <TabsTrigger value="colors">
+                    <Palette className="mr-2 h-4 w-4" />
+                    Colors
+                  </TabsTrigger>
+                  <TabsTrigger value="brush">
+                    <Paintbrush className="mr-2 h-4 w-4" />
+                    Brush
+                  </TabsTrigger>
+                  <TabsTrigger value="tools">
+                    <EraserIcon className="mr-2 h-4 w-4" />
+                    Tools
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="colors">
+                  <ColorPalette color={drawingColor} onChange={handleDrawingColorChange} />
+                </TabsContent>
+                <TabsContent value="brush" className="space-y-4">
+                  <div className="space-y-3">
+                    <Label className="block text-sm font-semibold">Brush Size</Label>
+                    <div className="flex items-center space-x-3">
+                      <Minus className="h-4 w-4 text-gray-500" />
+                      <Slider
+                        value={[brushWidth]}
+                        min={1}
+                        max={30}
+                        step={1}
+                        onValueChange={(value) => handleBrushWidthChange(value[0])}
+                        className="flex-1"
+                      />
+                      <Plus className="h-4 w-4 text-gray-500" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {brushSizes.map((size) => (
+                        <Button
+                          key={size.value}
+                          variant={size.value === brushWidth ? "default" : "outline"}
+                          className="px-2 py-1 h-auto"
+                          onClick={() => handleBrushWidthChange(size.value)}
+                        >
+                          {size.label}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="space-y-2 mt-4">
+                      <div className="flex justify-between">
+                        <Label className="font-medium">
+                          <Droplets className="mr-2 h-4 w-4" />
+                          Opacity
+                        </Label>
+                        <span className="text-sm font-medium">{drawingOpacity}%</span>
+                      </div>
+                      <Slider
+                        value={[drawingOpacity]}
+                        min={1}
+                        max={100}
+                        step={1}
+                        onValueChange={(value) => handleDrawingOpacityChange(value[0])}
+                      />
+                    </div>
+                  </div>
+                </TabsContent>
+                <TabsContent value="tools">
+                  <Button
+                    onClick={handleToggleErasing}
+                    variant={isErasing ? "destructive" : "outline"}
+                    className="w-full"
+                  >
+                    <EraserIcon className="mr-2 w-5 h-5" />
+                    {isErasing ? "Stop Erasing" : "Eraser Mode"}
+                  </Button>
+                </TabsContent>
+              </Tabs>
+            </>
+          )}
+        </TabsContent>
+
+        {/* Format Tab */}
         <TabsContent value="format" className="flex flex-wrap gap-2">
+          {/* Color Picker for Selected Object */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="h-10 flex items-center gap-2" disabled={!selectedObject}>
+                <Palette className="h-5 w-5" />
+                <div className="w-4 h-4 rounded-full border" style={{ backgroundColor: objectColor }} />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64">
+              <ColorPalette color={objectColor} onChange={changeObjectColor} />
+            </PopoverContent>
+          </Popover>
+
+          <div className="h-10 border-r border-gray-200 mx-1"></div>
+          
           {/* Text formatting */}
           <TooltipProvider>
             <Tooltip>
@@ -657,6 +1052,7 @@ export default function Toolbar() {
           </TooltipProvider>
         </TabsContent>
 
+        {/* Slide Tab */}
         <TabsContent value="slide" className="flex flex-wrap gap-2 items-center">
           <TooltipProvider>
             <Tooltip>
@@ -678,18 +1074,7 @@ export default function Toolbar() {
                         className="h-8 w-full"
                       />
                       <div className="grid grid-cols-5 gap-1 mt-2">
-                        {[
-                          "#ffffff",
-                          "#f8f9fa",
-                          "#e9ecef",
-                          "#dee2e6",
-                          "#ced4da",
-                          "#f8d7da",
-                          "#d1e7dd",
-                          "#cff4fc",
-                          "#fff3cd",
-                          "#d3d3d3",
-                        ].map((color) => (
+                        {colorPresets.map((color) => (
                           <button
                             key={color}
                             className="w-8 h-8 rounded-md border border-gray-200"

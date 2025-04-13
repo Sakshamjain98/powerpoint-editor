@@ -14,6 +14,13 @@ export function exportAsPPTX(canvas, fileName = "Presentation", options = {}) {
 
   return new Promise((resolve, reject) => {
     try {
+      // Make sure pptxgen is available
+      if (typeof pptxgen !== 'function') {
+        console.error("pptxgen library not found");
+        reject(new Error("pptxgen library not found"));
+        return;
+      }
+
       const pptx = new pptxgen();
 
       // Set presentation properties
@@ -24,99 +31,278 @@ export function exportAsPPTX(canvas, fileName = "Presentation", options = {}) {
       // Create a slide
       const slide = pptx.addSlide();
 
-      // Set background if specified in options
+      // Set background if specified in options or from currentSlide
       if (options.background) {
         slide.background = { color: options.background };
+      } else if (canvas.backgroundColor) {
+        // Use canvas background if available
+        slide.background = { color: canvas.backgroundColor };
       }
 
-      // Convert current canvas to image and add to slide
-      const imgData = canvas.toDataURL("image/png", 1.0);
-      
-      // Add the full canvas image to slide (fit to slide dimensions)
-      slide.addImage({
-        data: imgData,
-        x: 0,
-        y: 0,
-        w: "100%",
-        h: "100%"
-      });
+      // Get slide dimensions
+      const slideWidth = canvas.width*0.17;
+      const slideHeight = canvas.height*0.27;
 
-      // Also add each individual object to maintain editability
+      // Get all canvas objects in the correct z-order
       const objects = canvas.getObjects();
+      
+      // Process objects in the correct z-order (from back to front)
       objects.forEach(obj => {
-        const left = obj.left / canvas.width;
-        const top = obj.top / canvas.height;
-        const width = obj.width / canvas.width;
-        const height = obj.height / canvas.height;
-
-        if (obj.type === "i-text" || obj.type === "text") {
+        // Skip objects with no width or height
+        if (obj.width === 0 || obj.height === 0) return;
+        
+        // Convert object position to PowerPoint's percentage-based coordinates
+        // Adjust for object's center point vs top-left origin
+        const scaleX = obj.scaleX || 10;
+        const scaleY = obj.scaleY || 10;
+        const objWidth = obj.width * scaleX;
+        const objHeight = obj.height * scaleY;
+        
+        // Calculate object position (PowerPoint uses percentages)
+        // We need to take into account the center point vs top-left
+        let left, top;
+        
+        if (obj.originX === 'center') {
+          left = obj.left / slideWidth;
+          top = obj.top / slideHeight;
+        } else {
+          // If origin is left/top, adjust to center point for PowerPoint
+          left = (obj.left + objWidth / 2) / slideWidth;
+          top = (obj.top + objHeight / 2) / slideHeight;
+        }
+        
+        // Convert width/height to PowerPoint's percentage
+        const width = objWidth / slideWidth;
+        const height = objHeight / slideHeight;
+        
+        // Common transformation properties
+        const rotation = obj.angle || 0;
+        const flipH = obj.flipX || false;
+        const flipV = obj.flipY || false;
+        
+        // Handle different object types
+        if (obj.type === "i-text" || obj.type === "text" || obj.type === "textbox") {
+          // Handle text objects
           slide.addText(obj.text || "", {
-            x: left,
-            y: top,
+            x: left - width/2, // Convert from center to left origin
+            y: top - height/2, // Convert from center to top origin
             w: width,
             h: height,
-            fontSize: (obj.fontSize || 24) / 2,
+            fontSize: (obj.fontSize || 24) / 2, // PowerPoint font sizes are roughly half of canvas
             bold: obj.fontWeight === "bold",
             italic: obj.fontStyle === "italic",
             underline: obj.underline,
             color: obj.fill || "#000000",
             align: obj.textAlign || "left",
             fontFace: obj.fontFamily || "Arial",
+            rotate: rotation,
+            flipH: flipH,
+            flipV: flipV
           });
         } else if (obj.type === "rect") {
+          // Handle rectangle shapes
           slide.addShape("rect", {
-            x: left,
-            y: top,
+            x: left - width/2, // Convert from center to left origin
+            y: top - height/2, // Convert from center to top origin
             w: width,
             h: height,
             fill: { color: obj.fill || "#000000" },
             line: { 
-              color: obj.stroke || null, 
+              color: obj.stroke || "transparent", 
               width: (obj.strokeWidth || 0) / 2,
-              transparency: obj.stroke ? 0 : 100 // 100% transparent if no stroke
+              transparency: obj.stroke ? 0 : 100
             },
-            rotate: obj.angle || 0,
+            rotate: rotation,
+            flipH: flipH,
+            flipV: flipV
           });
         } else if (obj.type === "circle") {
+          // Handle circle shapes
           slide.addShape("ellipse", {
-            x: left,
-            y: top,
+            x: left - width/2, // Convert from center to left origin
+            y: top - height/2, // Convert from center to top origin
             w: width,
             h: height,
             fill: { color: obj.fill || "#000000" },
             line: { 
-              color: obj.stroke || null, 
+              color: obj.stroke || "transparent", 
               width: (obj.strokeWidth || 0) / 2,
-              transparency: obj.stroke ? 0 : 100 // 100% transparent if no stroke
+              transparency: obj.stroke ? 0 : 100
             },
-            rotate: obj.angle || 0,
+            rotate: rotation,
+            flipH: flipH,
+            flipV: flipV
+          });
+        } else if (obj.type === "ellipse") {
+          // Handle ellipse shapes
+          slide.addShape("ellipse", {
+            x: left - width/2, // Convert from center to left origin
+            y: top - height/2, // Convert from center to top origin
+            w: width,
+            h: height,
+            fill: { color: obj.fill || "#000000" },
+            line: { 
+              color: obj.stroke || "transparent", 
+              width: (obj.strokeWidth || 0) / 2,
+              transparency: obj.stroke ? 0 : 100
+            },
+            rotate: rotation,
+            flipH: flipH,
+            flipV: flipV
           });
         } else if (obj.type === "triangle") {
+          // Handle triangle shapes
           slide.addShape("triangle", {
-            x: left,
-            y: top,
+            x: left - width/2, // Convert from center to left origin
+            y: top - height/2, // Convert from center to top origin
             w: width,
             h: height,
             fill: { color: obj.fill || "#000000" },
             line: { 
-              color: obj.stroke || null, 
+              color: obj.stroke || "transparent", 
               width: (obj.strokeWidth || 0) / 2,
-              transparency: obj.stroke ? 0 : 100 // 100% transparent if no stroke
+              transparency: obj.stroke ? 0 : 100
             },
-            rotate: obj.angle || 0,
+            rotate: rotation,
+            flipH: flipH,
+            flipV: flipV
           });
-        } else if (obj.type === "image" && obj.getSrc()) {
-          // For images, we need to extract data URL
-          slide.addImage({
-            data: obj.getSrc(),
-            x: left,
-            y: top,
+        } else if (obj.type === "polygon") {
+          // Handle polygons (star, pentagon, hexagon, octagon)
+          // Determine shape type based on points count
+          let shapeType = "rect"; // default fallback
+          
+          if (obj.points && obj.points.length) {
+            const pointCount = obj.points.length;
+            if (pointCount === 5) shapeType = "pentagon";
+            else if (pointCount === 6) shapeType = "hexagon";
+            else if (pointCount === 8) shapeType = "octagon";
+            else if (pointCount === 10) shapeType = "star"; // 5-point star has 10 points
+          }
+          
+          slide.addShape(shapeType, {
+            x: left - width/2, // Convert from center to left origin
+            y: top - height/2, // Convert from center to top origin
             w: width,
             h: height,
-            rotate: obj.angle || 0,
+            fill: { color: obj.fill || "#000000" },
+            line: { 
+              color: obj.stroke || "transparent", 
+              width: (obj.strokeWidth || 0) / 2,
+              transparency: obj.stroke ? 0 : 100
+            },
+            rotate: rotation,
+            flipH: flipH,
+            flipV: flipV
           });
+        } else if (obj.type === "path") {
+          // For paths (complex shapes, arrows, etc.) or freehand drawings,
+          // We'll export them as images to maintain fidelity
+          try {
+            // Create a temporary canvas for this object
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            
+            // Set the canvas size to match the object dimensions
+            tempCanvas.width = Math.ceil(objWidth);
+            tempCanvas.height = Math.ceil(objHeight);
+            
+            // Create a new fabric canvas just for this object
+            const objCanvas = new fabric.StaticCanvas(null, {
+              width: Math.ceil(objWidth),
+              height: Math.ceil(objHeight)
+            });
+            
+            // Clone the object and center it on the canvas
+            fabric.util.object.clone(obj, function(clonedObj) {
+              clonedObj.set({
+                left: objWidth / 2,
+                top: objHeight / 2,
+                originX: 'center',
+                originY: 'center'
+              });
+              
+              objCanvas.add(clonedObj);
+              objCanvas.renderAll();
+              
+              // Get the image data
+              const imgData = objCanvas.toDataURL('image/png');
+              
+              // Add as image to the slide
+              slide.addImage({
+                data: imgData,
+                x: left - width/2, // Convert from center to left origin
+                y: top - height/2, // Convert from center to top origin
+                w: width,
+                h: height,
+                rotate: rotation,
+                flipH: flipH,
+                flipV: flipV
+              });
+            });
+          } catch (pathError) {
+            console.error("Error adding path to PPTX:", pathError);
+          }
+        } else if (obj.type === "image" && obj.getSrc) {
+          // Handle images
+          try {
+            // For images, get the source data
+            const imgSrc = obj.getSrc();
+            
+            // Add image to slide
+            slide.addImage({
+              data: imgSrc,
+              x: left - width/2, // Convert from center to left origin
+              y: top - height/2, // Convert from center to top origin
+              w: width,
+              h: height,
+              rotate: rotation,
+              flipH: flipH,
+              flipV: flipV
+            });
+          } catch (imgError) {
+            console.error("Error adding image to PPTX:", imgError);
+          }
+        } else if (obj.isDrawingMode || (obj.type === "path" && obj.path && obj.path.length > 0)) {
+          // Handle free drawing paths and complex paths
+          try {
+            // Create a temporary fabric canvas
+            const objCanvas = new fabric.StaticCanvas(null, {
+              width: Math.max(canvas.width, 800),
+              height: Math.max(canvas.height, 600)
+            });
+            
+            // Clone the object to prevent modifications
+            fabric.util.object.clone(obj, function(clonedObj) {
+              objCanvas.add(clonedObj);
+              objCanvas.renderAll();
+              
+              // Get the image data
+              const imgData = objCanvas.toDataURL('image/png');
+              
+              // Add as image to the slide
+              slide.addImage({
+                data: imgData,
+                x: left - width/2, // Convert from center to left origin
+                y: top - height/2, // Convert from center to top origin
+                w: width,
+                h: height,
+                rotate: rotation,
+                flipH: flipH,
+                flipV: flipV
+              });
+            });
+          } catch (drawError) {
+            console.error("Error adding drawing to PPTX:", drawError);
+          }
         }
       });
+
+      // If we have a slide with objects from the current slide only, add additional slides
+      if (options.exportAllSlides && options.slides && options.slides.length > 0) {
+        // Function to handle exporting additional slides would go here
+        // This would need integration with your slide management code
+      }
 
       // Save the file
       pptx.writeFile({ fileName: `${fileName}.pptx` })
@@ -132,6 +318,7 @@ export function exportAsPPTX(canvas, fileName = "Presentation", options = {}) {
     }
   });
 }
+
 
 /**
  * Export the current canvas as a PDF file
